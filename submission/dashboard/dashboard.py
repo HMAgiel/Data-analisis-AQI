@@ -124,7 +124,7 @@ header_loaksi = ["Aotizhongxin", "Changping", "Dingling", "Dongsi", "Guanyuan", 
 
 for i in header_loaksi:
     try:
-        df.append(pd.read_excel("/home/hasyim/dicoding/data_analysis/submission/dashboard/data_kualitas_udara_beijing.xlsx", sheet_name= i, engine="calamine"))
+        df.append(pd.read_excel("submission/dashboard/data_kualitas_udara_beijing.xlsx", sheet_name= i, engine="calamine"))
         print("Berhasil input data")
     
     except FileExistsError:
