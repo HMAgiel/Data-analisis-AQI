@@ -1,311 +1,262 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import plotly.express as px
 import streamlit as st
 
 
-#Function yang dipakai
-#function plot pola
+st.set_page_config(page_title="Hasyim Pollution Dashboard", page_icon="☁️", layout="wide")
 
-def plot_klim(polutan, cuaca=['TEMP', 'WSPM', 'RAIN']):
-    bulan_label = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-                   'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
-    satuan = {'TEMP': '°C', 'WSPM': 'm/s', 'RAIN': 'mm/bulan'}
-    warna_cuaca = {'TEMP': 'tab:red', 'DEWP': 'tab:green', 'PRES': 'tab:purple',
-                   'WSPM': 'tab:orange', 'RAIN': 'tab:blue'}
-
-
-    klim = gabung.groupby(['month', 'station'])[polutan].mean().unstack('station')
-
-
-    agg = {v: ('sum' if v == 'RAIN' else 'mean') for v in cuaca}
-    cb = gabung.groupby(['station', 'year', 'month'])[cuaca].agg(agg)
-    klim_cuaca = cb.groupby('month').mean()
-
-    cmap = plt.get_cmap('tab20')
-    n = 1 + len(cuaca)
-    fig, axes = plt.subplots(n, 1, figsize=(13, 3 + 2.2 * n), sharex=True,
-                             gridspec_kw={'height_ratios': [2.5] + [1] * len(cuaca)})
-
-
-    ax = axes[0]
-    for i, nama in enumerate(header_loaksi):
-        ax.plot(klim.index, klim[nama], color=cmap(i), linewidth=1.2, alpha=0.8, label=nama)
-    ax.plot(klim.index, klim.mean(axis=1), color='black', linewidth=3, label='Rata-rata stasiun')
-    ax.set_ylabel(f'{polutan}\n(µg/m³)')
-    ax.set_title(f'Klimatologi bulanan {polutan} dan variabel cuaca')
-    ax.grid(alpha=0.3)
-    ax.legend(loc='center left', bbox_to_anchor=(1.0, 0.5), frameon=False)
-
-    # panel cuaca
-    for ax, v in zip(axes[1:], cuaca):
-        if v == 'RAIN':
-            ax.bar(klim_cuaca.index, klim_cuaca[v], color=warna_cuaca[v], alpha=0.7)
-        else:
-            ax.plot(klim_cuaca.index, klim_cuaca[v], color=warna_cuaca[v], linewidth=2.5, marker='o')
-        ax.set_ylabel(f'{v}\n({satuan.get(v, "")})')
-        ax.grid(alpha=0.3)
-
-    axes[-1].set_xticks(range(1, 13))
-    axes[-1].set_xticklabels(bulan_label)
-    st.pyplot(fig=fig)
-    plt.close()
-    
-#Fungsi plot rose
-def plot_rose(polutan: str):
-  data = {}
-  for nama, bln in musim.items():
-      d = gabung[gabung['month'].isin(bln)]
-      frek = d['wd'].value_counts(normalize=True).reindex(arah).fillna(0) * 100
-      pm = d.groupby('wd')[polutan].mean().reindex(arah)
-      data[nama] = (frek, pm)
-
-  # batas radial sama untuk kedua musim supaya bisa dibandingkan
-  fmax = max(f.max() for f, _ in data.values()) * 1.1
-  pmax = max(p.max() for _, p in data.values()) * 1.1
-
-  baris = [('Frekuensi arah angin (%)', fmax, plt.cm.Blues, 0),
-          (f'Rata-rata {polutan} (µg/m³)',  pmax, plt.cm.Reds,  1)]
-
-  fig, axes = plt.subplots(2, 2, subplot_kw={'projection': 'polar'}, figsize=(12, 12))
-  for j, (nama, nilai_musim) in enumerate(data.items()):
-      for judul, rmax, cmap, i in baris:
-          nilai = nilai_musim[i]
-          ax = axes[i, j]
-          ax.set_theta_zero_location('N')
-          ax.set_theta_direction(-1)
-          ax.bar(theta, nilai.values, width=np.deg2rad(22.5),
-                color=cmap(nilai.values / rmax), edgecolor='white')
-          ax.set_ylim(0, rmax)
-          ax.set_xticks(theta)
-          ax.set_xticklabels(arah)
-          ax.set_title(f'{nama}\n{judul}', pad=20)
-
-  st.pyplot(fig=fig)
-  plt.close()
-
-def plot_klasifikasi(polutan: str):
-    harian = (gabung.set_index('datetime')
-                    .groupby('station')[polutan]
-                    .resample('D').mean()
-                    .reset_index())
-    harian['month'] = harian['datetime'].dt.month
-
-    # 2. kategori US EPA AQI untuk PM2.5 (revisi 2024)
-    batas = [0, 9.0, 35.4, 55.4, 125.4, 225.4, np.inf]
-    label = ['Good', 'Moderate', 'Unhealthy for Sensitive Groups',
-            'Unhealthy', 'Very Unhealthy', 'Hazardous']
-    harian['AQI'] = pd.cut(harian[polutan], bins=batas, labels=label, include_lowest=True)
-
-    # 3. % hari per kategori per bulan (semua stasiun & tahun)
-    pct = pd.crosstab(harian['month'], harian['AQI'], normalize='index') * 100
-
-    # 4. plot dengan warna resmi EPA
-    warna_epa = ['#00e400', '#ffff00', '#ff7e00', '#ff0000', '#8f3f97', '#7e0023']
-    fig, ax = plt.subplots(figsize=(12, 5))
-    pct.plot(kind='bar', stacked=True, color=warna_epa, width=0.85,
-                figsize=(12, 5), edgecolor='white', linewidth=0.5, ax=ax)
-    ax.set_xticklabels(['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'],
-                    rotation=0)
-    ax.set_ylabel('Persentase hari (%)')
-    ax.set_xlabel('Bulan')
-    ax.set_title(f'Distribusi kategori US AQI ({polutan} harian) per bulan, semua stasiun 2013–2017')
-    buruk = pct[['Unhealthy', 'Very Unhealthy', 'Hazardous']].sum(axis=1)
-    ax.legend(loc='center left', bbox_to_anchor=(1.0, 0.5), frameon=False)
-    
-    st.pyplot(fig=fig)
-    plt.close()
-
-#Read data
-df = []
+#Variabel yang dipakai
 header_loaksi = ["Aotizhongxin", "Changping", "Dingling", "Dongsi", "Guanyuan", "Gucheng", "Huairou", "Nongzhanguan",
                  "Shunyi", "Tiantan", "Wanliu", "Wanshouxigong"]
-
-for i in header_loaksi:
-    try:
-        df.append(pd.read_excel("submission/dashboard/data_kualitas_udara_beijing.xlsx", sheet_name= i, engine="calamine"))
-        print("Berhasil input data")
-    
-    except FileExistsError:
-        print("File error")
-
-# Data process
-gabung = pd.concat(df, keys=header_loaksi, names=['station']).reset_index()
-
-bulanan = gabung.groupby(['station', 'month']).agg({
-    'PM2.5': 'mean',
-    'PM10': 'mean'
-})
-
+bulan_label = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+               'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
 arah = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']
-theta = np.deg2rad(np.arange(16) * 22.5)
+cuaca = ['TEMP', 'WSPM', 'RAIN']
+nama_cuaca = {'TEMP': 'Temperatur (°C)', 'WSPM': 'Kecepatan angin (m/s)', 'RAIN': 'Hujan (mm/bulan)'}
 musim = {'Musim dingin (Des–Feb)': [12, 1, 2],
          'Musim panas (Jun–Agu)':  [6, 7, 8]}
 
+# warna stasiun yang di-highlight (maksimal 4 stasiun)
+warna_highlight = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100']
+warna_cuaca = '#0E7C86'
 
-#Streamlit logic        
+# kategori US EPA AQI (revisi 2024), batas PM2.5 dan PM10 berbeda
+batas_aqi = {'PM2.5': [0, 9.0, 35.4, 55.4, 125.4, 225.4, np.inf],
+             'PM10':  [0, 54, 154, 254, 354, 424, np.inf]}
+label_aqi = ['Good', 'Moderate', 'Unhealthy for Sensitive Groups',
+             'Unhealthy', 'Very Unhealthy', 'Hazardous']
+warna_epa = ['#00e400', '#ffff00', '#ff7e00', '#ff0000', '#8f3f97', '#7e0023']
+
+
+#Read data
+@st.cache_data
+def load_data():
+    df = []
+    for i in header_loaksi:
+        df.append(pd.read_excel("submission/dashboard/data_kualitas_udara_beijing.xlsx", sheet_name=i, engine="calamine"))
+
+    gabung = pd.concat(df, keys=header_loaksi, names=['station']).reset_index()
+    return gabung
+
+
+#Function yang dipakai
+#function data harian + kategori AQI
+def hitung_harian(data, polutan):
+    harian = (data.set_index('datetime')
+                  .groupby('station')[polutan]
+                  .resample('D').mean()
+                  .reset_index())
+    harian['month'] = harian['datetime'].dt.month
+    harian['AQI'] = pd.cut(harian[polutan], bins=batas_aqi[polutan], labels=label_aqi, include_lowest=True)
+    return harian
+
+#function plot pola
+def plot_klim(data, polutan, stasiun_pilih):
+    klim = data.groupby(['month', 'station'])[polutan].mean().reset_index()
+    rata = klim.groupby('month')[polutan].mean()
+
+    # stasiun yang dipilih diberi warna, sisanya abu-abu
+    warna = {}
+    for nama in header_loaksi:
+        if nama in stasiun_pilih:
+            warna[nama] = warna_highlight[stasiun_pilih.index(nama)]
+        else:
+            warna[nama] = 'lightgray'
+
+    # stasiun yang dipilih digambar paling akhir supaya ada di atas garis abu-abu
+    urutan = [nama for nama in header_loaksi if nama not in stasiun_pilih] + stasiun_pilih
+
+    fig = px.line(klim, x='month', y=polutan, color='station',
+                  color_discrete_map=warna, category_orders={'station': urutan},
+                  title=f'Pola bulanan {polutan} per stasiun')
+
+    for garis in fig.data:
+        if garis.name in stasiun_pilih:
+            garis.line.width = 4
+            garis.mode = 'lines+markers'
+        else:
+            garis.line.width = 1
+            garis.showlegend = False
+
+    fig.add_scatter(x=rata.index, y=rata.values, name='Rata-rata stasiun', mode='lines',
+                    line=dict(color='#1B2A35', width=3, dash='dash'))
+    fig.update_xaxes(tickvals=list(range(1, 13)), ticktext=bulan_label, title='Bulan')
+    fig.update_yaxes(title=f'{polutan} (µg/m³)')
+    fig.update_layout(height=450, legend_title_text='')
+    st.plotly_chart(fig)
+
+    with st.expander("Lihat tabel data"):
+        tabel = klim.pivot(index='month', columns='station', values=polutan).round(1)
+        tabel.index = [bulan_label[b - 1] for b in tabel.index]
+        st.dataframe(tabel)
+
+#function plot cuaca
+def plot_cuaca(data):
+    agg = {v: ('sum' if v == 'RAIN' else 'mean') for v in cuaca}
+    cb = data.groupby(['station', 'year', 'month'])[cuaca].agg(agg)
+    klim_cuaca = cb.groupby('month').mean().reset_index()
+
+    kolom = st.columns(3)
+    for kol, v in zip(kolom, cuaca):
+        if v == 'RAIN':
+            fig = px.bar(klim_cuaca, x='month', y=v, title=nama_cuaca[v],
+                         color_discrete_sequence=[warna_cuaca])
+        else:
+            fig = px.line(klim_cuaca, x='month', y=v, title=nama_cuaca[v], markers=True,
+                          color_discrete_sequence=[warna_cuaca])
+        fig.update_xaxes(tickvals=list(range(1, 13)), ticktext=bulan_label, title='')
+        fig.update_yaxes(title='')
+        fig.update_layout(height=300)
+        with kol:
+            st.plotly_chart(fig)
+
+#function plot korelasi
+def plot_korelasi(data, polutan):
+    korelasi = {}
+    for nama in data['station'].unique():
+        d = data[data['station'] == nama]
+        korelasi[nama] = d[[polutan] + cuaca].corr().loc[polutan, cuaca]
+
+    korelasi_df = pd.DataFrame(korelasi).T
+    korelasi_df.columns = [nama_cuaca[v] for v in cuaca]
+
+    fig = px.imshow(korelasi_df, text_auto='.2f', color_continuous_scale='RdBu_r',
+                    zmin=-1, zmax=1, aspect='auto',
+                    title=f'Korelasi {polutan} dengan variabel cuaca per stasiun')
+    fig.update_layout(height=500)
+    st.plotly_chart(fig)
+
+#Fungsi plot rose
+def plot_rose(data, polutan, musim_pilih):
+    # batas radial dari semua musim supaya bisa dibandingkan saat ganti musim
+    fmax = 0
+    pmax = 0
+    for bln in musim.values():
+        d = data[data['month'].isin(bln)]
+        if len(d) > 0:
+            fmax = max(fmax, (d['wd'].value_counts(normalize=True) * 100).max())
+            pmax = max(pmax, d.groupby('wd')[polutan].mean().max())
+
+    d = data[data['month'].isin(musim[musim_pilih])]
+    if len(d) == 0:
+        st.info("Tidak ada data untuk musim ini di rentang waktu yang dipilih")
+        return
+
+    rose = pd.DataFrame({
+        'arah': arah,
+        'frekuensi': d['wd'].value_counts(normalize=True).reindex(arah).fillna(0).values * 100,
+        polutan: d.groupby('wd')[polutan].mean().reindex(arah).values
+    })
+
+    kol1, kol2 = st.columns(2)
+    with kol1:
+        fig = px.bar_polar(rose, r='frekuensi', theta='arah', color='frekuensi',
+                           color_continuous_scale='Blues', range_r=[0, fmax * 1.1],
+                           range_color=[0, fmax * 1.1], title='Frekuensi arah angin (%)')
+        fig.update_layout(height=450)
+        st.plotly_chart(fig)
+    with kol2:
+        fig = px.bar_polar(rose, r=polutan, theta='arah', color=polutan,
+                           color_continuous_scale='Oranges', range_r=[0, pmax * 1.1],
+                           range_color=[0, pmax * 1.1], title=f'Rata-rata {polutan} (µg/m³)')
+        fig.update_layout(height=450)
+        st.plotly_chart(fig)
+
+#function plot kategori AQI
+def plot_klasifikasi(harian, polutan):
+    # % hari per kategori per bulan
+    pct = pd.crosstab(harian['month'], harian['AQI'], normalize='index') * 100
+    pct.columns = pct.columns.astype(str)
+    pct = pct.reindex(columns=label_aqi, fill_value=0).reset_index()
+
+    fig = px.bar(pct, x='month', y=label_aqi, color_discrete_sequence=warna_epa,
+                 title=f'Distribusi kategori US AQI ({polutan} harian) per bulan',
+                 labels={'value': 'Persentase hari (%)', 'variable': 'Kategori AQI'})
+    fig.update_traces(marker_line_color='white', marker_line_width=1)
+    fig.update_xaxes(tickvals=list(range(1, 13)), ticktext=bulan_label, title='Bulan')
+    fig.update_layout(height=450, bargap=0.15)
+    st.plotly_chart(fig)
+
+
+# Data process
+gabung = load_data()
+
+min_date = gabung['datetime'].min().date()
+max_date = gabung['datetime'].max().date()
+
+
+#Sidebar
+with st.sidebar:
+    st.title("Filter Data")
+
+    polutan = st.selectbox("Pilih polutan", ["PM2.5", "PM10"])
+
+    tanggal = st.date_input("Rentang waktu", value=[min_date, max_date],
+                            min_value=min_date, max_value=max_date)
+
+    stasiun_pilih = st.multiselect("Pilih stasiun", header_loaksi, max_selections=4,
+                                   placeholder="Semua stasiun",
+                                   help="Stasiun yang dipilih di-highlight di grafik pola bulanan "
+                                        "dan dipakai untuk grafik lain. Kosongkan untuk semua stasiun.")
+
+if len(tanggal) != 2:
+    st.warning("Pilih tanggal akhir dulu di sidebar")
+    st.stop()
+
+start_date, end_date = tanggal
+
+main_df = gabung[(gabung['datetime'] >= pd.to_datetime(start_date)) &
+                 (gabung['datetime'] < pd.to_datetime(end_date) + pd.Timedelta(days=1))]
+
+if len(stasiun_pilih) > 0:
+    stasiun_df = main_df[main_df['station'].isin(stasiun_pilih)]
+else:
+    stasiun_df = main_df
+
+harian = hitung_harian(stasiun_df, polutan)
+
+
+#Streamlit logic
 st.header('Hasyim Pollution Dashboard :sparkles:')
 
-st.markdown("""
-           ## Latar Belakang
-Pada project ini, saya mencoba memposisikan diri sebagai pebisnis masker yang ingin melihat kapan waktu polusi tinggi dan faktor apa yang memengaruhinya pada semua wilayah. Tujuan melihat kapan waktu tertinggi ini adalah untuk mencoba meningkatkan penjualan dengan melakukan pemasaran di saat polusi tertinggi, serta untuk persiapan penambahan stok dan pemasaran sebelum puncak polusi itu terjadi.
+if len(stasiun_pilih) > 0:
+    teks_stasiun = ", ".join(stasiun_pilih)
+else:
+    teks_stasiun = "Semua stasiun"
+st.caption(f"{start_date} s/d {end_date} | {teks_stasiun}")
 
+rata_polutan = stasiun_df[polutan].mean()
+bulan_tinggi = stasiun_df.groupby('month')[polutan].mean().idxmax()
+stasiun_tinggi = stasiun_df.groupby('station')[polutan].mean().idxmax()
+persen_buruk = harian['AQI'].isin(['Unhealthy', 'Very Unhealthy', 'Hazardous']).mean() * 100
 
-## Pertanyaan
-Dari latar belakang di atas, maka saya membuat pertanyaan:
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric(f"Rata-rata {polutan}", value=f"{rata_polutan:.1f} µg/m³", border=True)
+with col2:
+    st.metric("Bulan tertinggi", value=bulan_label[bulan_tinggi - 1], border=True)
+with col3:
+    st.metric("Stasiun tertinggi", value=stasiun_tinggi, border=True)
+with col4:
+    st.metric("Hari Unhealthy ke atas", value=f"{persen_buruk:.1f}%", border=True)
 
-**Pertanyaan 1**: Pengaruh variabel temperatur, hujan, dan angin terhadap konsentrasi PM 2.5 dan PM 10, serta bagaimana perubahan variabel cuaca terhadap pola konsentrasi dalam rentang klimatologi bulanan di 12 wilayah pengamatan.
+tab1, tab2, tab3, tab4 = st.tabs(["Pola Bulanan", "Korelasi", "Arah Angin", "Kategori AQI"])
 
-Keterangan pertanyaan 1:
+with tab1:
+    plot_klim(main_df, polutan, stasiun_pilih)
+    st.subheader("Variabel cuaca")
+    plot_cuaca(stasiun_df)
 
-- **Specific**: Fokus pada polutan PM 2.5 dan PM 10, serta pada variabel cuaca hujan, temperatur, dan kecepatan angin.
-- **Measurable**: Besar pengaruh dalam korelasi dan perubahan pola.
-- **Action-Oriented**: Dengan mengetahui hubungan polutan dengan cuaca serta perubahan pola, maka dapat dilakukan edukasi ke masyarakat saat pola polutan tinggi dan rendah, serta dapat juga melakukan promosi, terutama saat polutan tinggi.
-- **Relevant**: Kenaikan dan penurunan polutan berpengaruh terhadap banyaknya penggunaan masker untuk kesehatan.
-- **Time-bound**: Klimatologi bulanan.
+with tab2:
+    plot_korelasi(stasiun_df, polutan)
 
-**Pertanyaan 2**: Berdasarkan arah dan kecepatan angin dari seluruh wilayah, bagaimana pergerakan dari dan ke particulate matter saat musim panas dan musim dingin?
+with tab3:
+    musim_pilih = st.radio("Pilih musim", list(musim.keys()), horizontal=True)
+    plot_rose(stasiun_df, polutan, musim_pilih)
 
-- **Specific**: Fokus pada arah angin dan polutan PM 2.5 dan PM 10.
-- **Measurable**: Dihitung berdasarkan kategori arah angin saja.
-- **Action-Oriented**: Dengan mengetahui arah angin, dapat diketahui ke mana arah gerak polutan dan dari mana asalnya, sehingga pada wilayah yang dilalui dapat dilakukan promosi dengan lebih detail kepada orang-orang di wilayah tersebut.
-- **Relevant**: Arah pergerakan polutan memengaruhi wilayah mana yang terdampak dan dapat dijadikan target market.
-- **Time-bound**: Musim panas dan musim dingin. """)
-
-st.subheader("Pertanyaan 1: Pengaruh variabel temperatur, hujan, dan angin terhadap konsentrasi PM 2.5 dan PM 10, serta bagaimana perubahan variabel cuaca terhadap pola konsentrasi dalam rentang klimatologi bulanan di 12 wilayah pengamatan.")
-st.subheader("Korelasi polutan")
-
-cuaca = ['TEMP', 'RAIN', 'WSPM']
-
-korelasi_pm_2_5 = {}
-for nama, d in zip(header_loaksi, df):
-    matrix = d.corr(numeric_only=True)
-    korelasi_pm_2_5[nama] = matrix.loc['PM2.5', cuaca]
-
-korelasi_pm25 = pd.DataFrame(korelasi_pm_2_5).T
-
-korelasi_pm_10 = {}
-for nama, d in zip(header_loaksi, df):
-    matrix = d.corr(numeric_only=True)
-    korelasi_pm_10[nama] = matrix.loc['PM10', cuaca]
-
-korelasi_pm10 = pd.DataFrame(korelasi_pm_10).T
-
-fig1, ax1 = plt.subplots(figsize=(8, 6))
-sns.heatmap(korelasi_pm25, annot=True, fmt='.2f', cmap='coolwarm', vmin=-1, vmax=1, center=0)
-ax1.set_title('Korelasi PM2.5 dengan variabel cuaca per stasiun')
-
-fig2, ax2 = plt.subplots(figsize=(8, 6))
-sns.heatmap(korelasi_pm10, annot=True, fmt='.2f', cmap='coolwarm', vmin=-1, vmax=1, center=0)
-ax2.set_title('Korelasi PM2.5 dengan variabel cuaca per stasiun')
-
-kor1, kor2 = st.columns(2)
-
-with kor1:
-    st.pyplot(fig=fig1)
-    plt.close()
-    st.caption("Korelasi PM 2.5 dan variabel cuaca", text_alignment='center')
-
-with kor2:
-    st.pyplot(fig=fig2)
-    plt.close()
-    st.caption("Korelasi PM 10 dan variabel cuaca", text_alignment='center')
-
-st.markdown("""
-Hasil korelasi variabel cuaca menunjukkan hasil yang lemah untuk semua variabel, dengan nilai korelasi terhadap PM 2.5 dan PM 10 di bawah 0,3. Dari hasil ini juga dapat terlihat bahwa variabel cuaca berkorelasi negatif dengan partikulat.
-
-Maka dari hasil ini dapat dikatakan bahwa partikulat memiliki hubungan berkebalikan yang lemah dengan temperatur, hujan, dan angin.
-
-Dari hasil hubungan ini, dapat dikatakan bahwa partikulat akan bernilai tinggi saat suhu, hujan, dan angin rendah, di mana hal ini biasanya terjadi di musim dingin.
-\n""")
-
-
-st.subheader("Pola polutan dan variabel cuaca")
-
-plot_klim('PM2.5', cuaca=['TEMP', 'WSPM', 'RAIN'])
-st.caption("Pola Polutan PM 2.5 dan data cuaca", text_alignment="center")
-
-st.markdown("""
-            Pada pola polutan PM2.5 terlihat adanya kenaikan dimulai dari bulan September dan mencapai puncak di bulan Desember atau Januari, lalu mulai mengalami penurunan dari bulan Maret sampai titik terendah di bulan Agustus.
-
-Jika dilihat dari pola temperatur, nilai polutan mencapai titik terendah saat temperatur tinggi dan mencapai puncak saat temperatur rendah. Hal ini sejalan dengan nilai korelasi yang berkebalikan.
-
-Sedangkan untuk pola angin, nilainya tidak terlalu mengikuti polutan dan terdapat lag, atau tidak serupa pada puncak dan titik terendah polutan.
-
-Pada hujan, tidak ada kesesuaian antara pola polutan dengan hujan. Hal ini sesuai dengan korelasi hujan dan polutan.
-            """)
-
-plot_klim('PM10', cuaca=['TEMP', 'WSPM', 'RAIN'])
-st.caption("Pola Polutan PM 10 dan data cuaca", text_alignment="center")
-
-st.markdown("""
-Dari hasil plot line polutan PM10, temperatur, angin, dan plot bar hujan, dapat diketahui bahwa polutan memiliki pola yang serupa untuk semua wilayah, di mana terdapat pola kenaikan yang signifikan dari bulan September dan mencapai puncak di bulan Maret, lalu turun dan mencapai titik terendah di bulan Juli atau Agustus.
-            \n""")
-
-st.subheader("Berdasarkan arah dan kecepatan angin dari seluruh wilayah, bagaimana pergerakan dari dan ke particulate matter saat musim panas dan musim dingin?")
-
-plot_rose("PM2.5")
-st.caption("Plot rose PM 2.5", text_alignment="center")
-
-plot_rose("PM10")
-st.caption("Plot rose PM 10", text_alignment="center")
-
-st.markdown("""
-            Pada hasil peta windrose dan juga pollution rose, terlihat bahwa pergerakannya sama untuk PM 10 dan PM 2.5, di mana saat musim dingin kebanyakan angin bergerak dari barat laut ke utara dan timur laut, sedangkan pada musim panas dari utara ke timur laut.
-
-Pada kedua musim itu juga polutan terlihat tinggi di musim dingin dengan hampir dominasi di seluruh arah angin, kecuali dari barat ke utara, sedangkan di musim panas pergerakan polutan cenderung lemah.
-
-Hal ini sejalan dengan analisis bulanan, di mana polutan tinggi di akhir tahun sampai awal tahun, yaitu pada musim dingin, dan rendah pada musim panas di pertengahan tahun.
-            """)
-
-st.subheader("Analisis lanjutan kategorikal")
-st.markdown("""
-            Pada analisis lanjutan di sini saya akan mencoba mengelompokan polutan berdasarkan kriteria dari US Air Quality Index, polutan akan dirata-rata dulu di setiap stasiun dan dilihat perbukan bagaiaman dan yang termasuk katrgori berbahaya yang mana
-
-Berikut adalah index yang dipakai
-
-| Nilai AQI | Kategori (Level of Concern) | Warna  | Keterangan |
-|-----------|-----------------------------|--------|------------|
-| 0 – 50    | Good                        | Hijau  | Kualitas udara memuaskan, polusi udara sedikit atau tidak berisiko. |
-| 51 – 100  | Moderate                    | Kuning | Kualitas udara dapat diterima, tetapi bisa berisiko bagi sebagian kecil orang yang sangat sensitif terhadap polusi. |
-| 101 – 150 | Unhealthy for Sensitive Groups | Oranye | Kelompok sensitif (anak-anak, lansia, penderita penyakit jantung/paru) dapat mengalami gangguan kesehatan. Masyarakat umum kemungkinan kecil terdampak. |
-| 151 – 200 | Unhealthy                   | Merah  | Sebagian masyarakat umum dapat mengalami gangguan kesehatan; kelompok sensitif dapat mengalami dampak yang lebih serius. |
-| 201 – 300 | Very Unhealthy              | Ungu   | Peringatan kesehatan: risiko dampak kesehatan meningkat bagi semua orang. |
-| 301+      | Hazardous                   | Merah marun | Peringatan darurat kesehatan: semua orang lebih mungkin terdampak. |
-            """)
-
-plot_klasifikasi("PM2.5")
-st.caption("Kategori PM 2.5 rata=rata stasiun di semua bulan", text_alignment='center')
-
-plot_klasifikasi("PM10")
-st.caption("Kategori PM 10 rata=rata stasiun di semua bulan", text_alignment='center')
-
-st.markdown("""
-            Berdasarkan hasil pengelompokan polutan dari Air Quality Index, terlihat bahwa pada bulan Oktober sampai Maret terdapat persentase yang tinggi untuk kategori hazardous yang mana ini amat sangat melebihi batas atas.
-
-Dari hasil ini, maka dapat dikatakan bahwa pada bulan-bulan dengan kategori tinggi dapat menjadi peluang potensi pada edukasi masyarakat tentang bahaya pencemaran polutan PM 10 dan PM 2.5, serta untuk pemasaran penjualan masker dari perusahaan.
-            """)
-
-
-st.subheader("Conclusion")
-st.markdown("""
-            - **Conclusion pertanyaan 1:** Kesimpulan yang didapatkan dari pertanyaan 1 adalah, polutan PM 2.5 dan PM 10 tidak memiliki korelasi atau hubungan yang kuat dengan temperatur, hujan, dan angin, akan tetapi pola pergerakan variabel cuaca menunjukkan adanya keterkaitan dengan sistem yang lebih luas, di mana pada musim gugur dan dingin nilai polutan naik dan mencapai titik tertinggi, lalu turun kembali dan mencapai titik terendah di musim panas.
-
-
-
-- **Conclusion pertanyaan 2:** Pada pertanyaan kedua, pergerakan polutan di musim dingin cenderung tersebar dari semua wilayah, sedangkan pada musim panas lemah di semua arah angin.
-
-Dari hasil kedua ini juga dapat disimpulkan untuk bisnis masker yang menjadi dasar analisis adalah penjualan dapat diboost di waktu polutan tinggi, yaitu saat musim gugur dan musim dingin. Hal ini dapat dilakukan dengan mengedukasi masyarakat di saat polutan rendah di musim panas sehingga saat musim dingin masyarakat aware dan mulai adanya peningkatan pembelian.
-            """)
-
-st.markdown("""
-            **Rekomendasi Action Item:**
-- Perlunya dilakukan penelitian lebih lanjut dengan acuan yang lebih detail dan data yang lebih panjang.
-- Pada edukasi ke masyarakat, perlu ditekankan bahwa polutan PM 10 dan PM 2.5 berbahaya, lalu perlu ditekankan pada bulan-bulan yang benar-benar terlihat berbahaya.
-- Perlunya memakai data cuaca lain agar lebih terlihat faktor cuaca apa yang benar-benar memengaruhi polutan.
-- Jika memungkinkan, perlunya penggunaan machine learning, terutama untuk mengisi data kosong, karena dengan metode sekarang terlalu robust.
-            """)
+with tab4:
+    plot_klasifikasi(harian, polutan)
 
 with st.bottom:
     st.text("Hasil Analisis Air Quality Data | Hasim Muhammad Agiel")

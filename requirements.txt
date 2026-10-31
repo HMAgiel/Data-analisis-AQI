@@ -1,6 +1,8 @@
 pandas
 numpy
 matplotlib
-streamlit
 seaborn
+openpyxl
+plotly
+streamlit
 python-calamine
